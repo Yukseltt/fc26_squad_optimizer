@@ -16,8 +16,6 @@ Bu proje, makine öğrenmesi, sinir ağları ve genetik algoritmaları bir araya
     <i>Streamlit arayüzünde veri analizi, ML/NN eğitimi ve GA optimizasyon ekranları</i>
 </p>
 
-Not: Görsellerinizin doğru görünmesi için ekran görüntülerinizi `images/` klasörüne koyun ve README içinde `images/<dosya_adı>.png` şeklinde referans verin.
-
 ---
 
 ## Proje Hakkında
