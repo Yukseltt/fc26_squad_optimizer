@@ -103,12 +103,22 @@ def main():
         find_undervalued = input("\nDeğerinin altındaki oyuncuları bulmak ister misiniz? (e/h): ").lower()
         if find_undervalued == 'e':
             print("\n🔍 Değeri düşük oyuncular aranıyor...")
-            undervalued = ml_predictor.find_undervalued_players(X, y, threshold=0.5)
+            undervalued = ml_predictor.find_undervalued_players(X, y, loader.df, threshold=0.5)
             
             if len(undervalued) > 0:
                 print(f"\n✅ {len(undervalued)} değeri düşük oyuncu bulundu!")
                 print("\nİlk 10 oyuncu:")
-                print(undervalued.head(10).to_string())
+                
+                # Detaylı sütunlar göster
+                display_cols = ['short_name', 'overall', 'potential', 'age', 'player_positions',
+                               'actual_value', 'predicted_value', 'value_diff', 'value_ratio',
+                               'club_name', 'nationality_name']
+                available_cols = [col for col in display_cols if col in undervalued.columns]
+                
+                if available_cols:
+                    print(undervalued[available_cols].head(10).to_string())
+                else:
+                    print(undervalued.head(10).to_string())
             else:
                 print("❌ Değeri düşük oyuncu bulunamadı.")
     

@@ -2,8 +2,8 @@
 FC26 Squad Optimizer Package
 """
 
-__version__ = '1.0.0'
-__author__ = 'Your Name'
+__version__ = '1.0.1'
+__author__ = 'Erhan Yuksel Turgut'
 
 from .data_loader import DataLoader
 from .ml_models import PlayerValuePredictor, PerformancePredictor

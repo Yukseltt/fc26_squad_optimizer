@@ -6,9 +6,12 @@ import random
 class GeneticSquadOptimizer:
     """Genetik algoritma ile takım optimizasyonu"""
     
-    def __init__(self, players_df: pd.DataFrame, formation: str = '433'):
+    def __init__(self, players_df: pd.DataFrame, formation: str = '433', 
+                 include_bench: bool = True, bench_size: int = 7):
         self.players_df = players_df
         self.formation = formation
+        self.include_bench = include_bench
+        self.bench_size = bench_size  # Her pozisyon için yedek sayısı
         self.formations = {
             '433': ['GK', 'LB', 'CB', 'CB', 'RB', 'CM', 'CM', 'CM', 'LW', 'ST', 'RW'],
             '442': ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'],
@@ -21,6 +24,43 @@ class GeneticSquadOptimizer:
             'CAM': 'cam', 'LM': 'lm', 'RM': 'rm', 'LW': 'lw',
             'RW': 'rw', 'ST': 'st', 'CF': 'cf'
         }
+        
+        # Yedek oyuncu pozisyonları (her pozisyon için)
+        self.bench_positions = self._get_bench_positions()
+    
+    def _get_bench_positions(self) -> List[str]:
+        """Yedek oyuncu pozisyonlarını belirle"""
+        # Benzersiz pozisyonları al
+        unique_positions = list(set(self.formations.get(self.formation, [])))
+        
+        # Her pozisyon için yedek ekle
+        bench = []
+        position_count = {}
+        
+        for pos in self.formations.get(self.formation, []):
+            position_count[pos] = position_count.get(pos, 0) + 1
+        
+        # Yedek dağılımı (öncelik sırasına göre)
+        bench_priority = {
+            'GK': 2,     # 2 yedek kaleci
+            'CB': 2,     # 2 yedek stoper
+            'CM': 2,     # 2 yedek orta saha
+            'ST': 2,     # 2 yedek forvet
+            'LB': 1,     # 1 yedek sol bek
+            'RB': 1,     # 1 yedek sağ bek
+            'LW': 1,     # 1 yedek sol kanat
+            'RW': 1,     # 1 yedek sağ kanat
+            'CDM': 1,    # 1 yedek defansif orta saha
+            'CAM': 1,    # 1 yedek ofansif orta saha
+            'LM': 1,
+            'RM': 1
+        }
+        
+        for pos in unique_positions:
+            count = bench_priority.get(pos, 1)
+            bench.extend([pos] * count)
+        
+        return bench[:self.bench_size]  # Maksimum yedek sayısı kadar
         
     def get_position_score(self, player: pd.Series, position: str) -> float:
         """Oyuncunun pozisyon uygunluk skorunu al"""
@@ -120,13 +160,27 @@ class GeneticSquadOptimizer:
         return total_fitness
     
     def create_random_squad(self, positions: List[str], max_budget: float) -> Dict:
-        """Rastgele geçerli bir takım oluştur"""
+        """Rastgele geçerli bir takım oluştur (11 oyuncu + yedekler)"""
         squad = []
+        bench = []
         total_cost = 0
         used_players = set()
         
-        for position in positions:
+        # Bütçe dağılımı: İlk 11 için %70, yedekler için %30
+        main_squad_budget = max_budget * 0.70
+        bench_budget = max_budget * 0.30
+        
+        # Her oyuncu için maksimum bütçe (çok pahalı oyuncu engellemek için)
+        max_player_budget = main_squad_budget / len(positions) * 2.5
+        
+        # 1. İlk 11'i oluştur
+        for i, position in enumerate(positions):
             pos_col = self.position_mapping.get(position, 'cm')
+            
+            # Kalan bütçeyi hesapla
+            remaining_positions = len(positions) - i
+            remaining_budget = main_squad_budget - total_cost
+            min_budget_per_position = remaining_budget / remaining_positions if remaining_positions > 0 else 0
             
             # Pozisyona uygun oyuncuları filtrele
             candidates = self.players_df[
@@ -135,27 +189,95 @@ class GeneticSquadOptimizer:
                 (self.players_df[pos_col] >= 50)
             ].copy()
             
-            # Bütçeye uygun olanları filtrele
+            # ASIL MEVKİİ KONTROLÜ
+            if 'player_positions' in candidates.columns:
+                candidates = candidates[
+                    candidates['player_positions'].astype(str).str.contains(
+                        position, case=False, na=False, regex=False
+                    )
+                ]
+            
+            # Bütçe filtreleri
             candidates = candidates[
-                (total_cost + candidates['value_eur']) <= max_budget
+                (candidates['value_eur'] <= max_player_budget) &  # Çok pahalı engelle
+                (total_cost + candidates['value_eur'] <= main_squad_budget) &
+                (candidates['value_eur'] >= min_budget_per_position * 0.3)  # Çok ucuz engelle
             ]
             
             if len(candidates) == 0:
-                return None  # Geçerli takım oluşturulamadı
+                # Daha esnek kriterlerle tekrar dene
+                candidates = self.players_df[
+                    (~self.players_df['player_id'].isin(used_players)) &
+                    (self.players_df['value_eur'] > 0) &
+                    (self.players_df[pos_col] >= 60) &
+                    ((total_cost + self.players_df['value_eur']) <= main_squad_budget)
+                ].copy()
+                
+                if len(candidates) == 0:
+                    return None
             
-            # En iyi 50'den rastgele seç
-            top_candidates = candidates.nlargest(50, pos_col)
-            if len(top_candidates) == 0:
-                return None
-            
-            selected = top_candidates.sample(n=1).iloc[0]
+            # Dengeli seçim: En iyi 50'nin ortasından seç
+            top_candidates = candidates.nlargest(min(50, len(candidates)), pos_col)
+            if len(top_candidates) > 5:
+                # Ortadaki oyunculardan seç (çok iyi ve çok kötü dışla)
+                mid_start = len(top_candidates) // 4
+                mid_end = len(top_candidates) * 3 // 4
+                selected = top_candidates.iloc[mid_start:mid_end].sample(n=1).iloc[0]
+            else:
+                selected = top_candidates.sample(n=1).iloc[0]
             
             squad.append(selected)
             used_players.add(selected['player_id'])
             total_cost += float(selected['value_eur'])
         
+        # 2. Yedekleri oluştur
+        if self.include_bench:
+            bench_cost = 0
+            max_bench_player_budget = bench_budget / len(self.bench_positions) * 1.5
+            
+            for position in self.bench_positions:
+                pos_col = self.position_mapping.get(position, 'cm')
+                
+                # Yedek için daha düşük kriterler
+                candidates = self.players_df[
+                    (~self.players_df['player_id'].isin(used_players)) &
+                    (self.players_df['value_eur'] > 0) &
+                    (self.players_df[pos_col] >= 45)  # Daha düşük eşik
+                ].copy()
+                
+                # Asıl mevkii kontrolü
+                if 'player_positions' in candidates.columns:
+                    position_match = candidates[
+                        candidates['player_positions'].astype(str).str.contains(
+                            position, case=False, na=False, regex=False
+                        )
+                    ]
+                    if len(position_match) > 0:
+                        candidates = position_match
+                
+                # Yedek bütçe filtresi
+                remaining_bench_budget = bench_budget - bench_cost
+                candidates = candidates[
+                    (candidates['value_eur'] <= max_bench_player_budget) &
+                    (bench_cost + candidates['value_eur'] <= bench_budget)
+                ]
+                
+                if len(candidates) == 0:
+                    continue  # Bu yedek bulunamazsa atla
+                
+                # Yedek için orta seviye oyuncular seç
+                top_candidates = candidates.nlargest(min(30, len(candidates)), pos_col)
+                if len(top_candidates) > 0:
+                    selected = top_candidates.sample(n=1).iloc[0]
+                    bench.append(selected)
+                    used_players.add(selected['player_id'])
+                    bench_cost += float(selected['value_eur'])
+            
+            total_cost += bench_cost
+        
         return {
             'squad': squad,
+            'bench': bench,
             'cost': total_cost
         }
     
@@ -177,6 +299,16 @@ class GeneticSquadOptimizer:
                     (~self.players_df['player_id'].isin(used_players)) &
                     (self.players_df[pos_col] >= 50)
                 ]
+                
+                # ASIL MEVKİİ KONTROLÜ
+                if 'player_positions' in candidates.columns:
+                    position_match = candidates[
+                        candidates['player_positions'].astype(str).str.contains(
+                            position, case=False, na=False, regex=False
+                        )
+                    ]
+                    if len(position_match) > 0:
+                        candidates = position_match
                 
                 if len(candidates) > 0:
                     player = candidates.sample(n=1).iloc[0]
@@ -206,6 +338,16 @@ class GeneticSquadOptimizer:
             (self.players_df[pos_col] >= 50)
         ]
         
+        # ASIL MEVKİİ KONTROLÜ
+        if 'player_positions' in candidates.columns:
+            position_match = candidates[
+                candidates['player_positions'].astype(str).str.contains(
+                    position, case=False, na=False, regex=False
+                )
+            ]
+            if len(position_match) > 0:
+                candidates = position_match
+        
         if len(candidates) > 0:
             new_player = candidates.sample(n=1).iloc[0]
             mutated_squad[mutate_idx] = new_player
@@ -214,14 +356,21 @@ class GeneticSquadOptimizer:
     
     def optimize(self, budget: float, population_size: int = 50, 
                 generations: int = 30, elite_size: int = 5,
-                use_ml: bool = False, ml_predictor=None) -> Dict:
-        """Genetik algoritma ile optimizasyon"""
+                use_ml: bool = False, ml_predictor=None,
+                use_synergy: bool = False, synergy_predictor=None,
+                progress_callback=None) -> Dict:
+        """Genetik algoritma ile optimizasyon
+        
+        Args:
+            progress_callback: Her nesilde çağrılacak fonksiyon (current_gen, total_gen, best_fitness)
+        """
         print(f"\n🧬 Genetik algoritma başlatılıyor...")
         print(f"   Formasyon: {self.formation}")
         print(f"   Bütçe: {budget:,.0f} EUR")
         print(f"   Popülasyon: {population_size}")
         print(f"   Jenerasyon: {generations}")
-        print(f"   ML Kullanımı: {'Evet' if use_ml else 'Hayır'}\n")
+        print(f"   ML Kullanımı: {'Evet' if use_ml else 'Hayır'}")
+        print(f"   Sinerji NN: {'Evet' if use_synergy else 'Hayır'}\n")
         
         positions = self.formations[self.formation]
         
@@ -252,7 +401,9 @@ class GeneticSquadOptimizer:
                     individual['squad'], 
                     positions,
                     use_ml,
-                    ml_predictor
+                    ml_predictor,
+                    use_synergy,
+                    synergy_predictor
                 )
             
             # Sırala
@@ -262,11 +413,16 @@ class GeneticSquadOptimizer:
             if best_overall is None or population[0]['fitness'] > best_overall['fitness']:
                 best_overall = {
                     'squad': [p.copy() for p in population[0]['squad']],
+                    'bench': [p.copy() for p in population[0].get('bench', [])] if self.include_bench else [],
                     'cost': population[0]['cost'],
                     'fitness': population[0]['fitness']
                 }
             
             generation_best.append(population[0]['fitness'])
+            
+            # Progress callback
+            if progress_callback:
+                progress_callback(gen + 1, generations, population[0]['fitness'])
             
             # İlerleme
             if (gen + 1) % 5 == 0:
@@ -274,6 +430,7 @@ class GeneticSquadOptimizer:
             
             # Yeni popülasyon
             elite = [{'squad': [p.copy() for p in ind['squad']], 
+                     'bench': [p.copy() for p in ind.get('bench', [])],
                      'cost': ind['cost']} for ind in population[:elite_size]]
             new_population = elite
             
@@ -283,19 +440,30 @@ class GeneticSquadOptimizer:
                 parent1 = population[random.randint(0, min(19, len(population)-1))]
                 parent2 = population[random.randint(0, min(19, len(population)-1))]
                 
-                # Crossover
+                # Crossover - ana kadro
                 child_squad = self.crossover(parent1['squad'], parent2['squad'], positions)
                 
                 if child_squad:
-                    # Mutasyon
+                    # Mutasyon - ana kadro
                     child_squad = self.mutate(child_squad, positions)
                     
-                    # Bütçe kontrolü
+                    # Crossover ve mutasyon - yedekler (eğer varsa)
+                    child_bench = []
+                    if self.include_bench and 'bench' in parent1 and 'bench' in parent2:
+                        bench_positions = self._get_bench_positions()
+                        child_bench = self.crossover(parent1['bench'], parent2['bench'], bench_positions)
+                        if child_bench:
+                            child_bench = self.mutate(child_bench, bench_positions)
+                    
+                    # Bütçe kontrolü - toplam maliyet
                     child_cost = sum(float(p['value_eur']) for p in child_squad)
+                    if child_bench:
+                        child_cost += sum(float(p['value_eur']) for p in child_bench)
                     
                     if child_cost <= budget:
                         new_population.append({
                             'squad': child_squad,
+                            'bench': child_bench,
                             'cost': child_cost
                         })
             
@@ -313,6 +481,7 @@ class GeneticSquadOptimizer:
         
         return {
             'squad': best_overall['squad'],
+            'bench': best_overall.get('bench', []),
             'cost': best_overall['cost'],
             'fitness': best_overall['fitness'],
             'chemistry': chemistry,
