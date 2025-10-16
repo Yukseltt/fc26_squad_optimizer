@@ -7,11 +7,16 @@ Bu proje, makine öğrenmesi, sinir ağları ve genetik algoritmaları bir araya
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 <p align="center">
-    <img src="https://drive.google.com/file/d/1Be3SesbESj9xyHHq5CvWFK6Jc5LZsYC_/view?usp=sharing" alt="Uygulama Arayüzü" width="800">
+    <img src="images/arayuz.jpg" alt="Uygulama Arayüzü - 1" width="49%">
+    <img src="images/arayuz2.jpg" alt="Uygulama Arayüzü - 2" width="49%"><br/>
+    <img src="images/arayuz3.jpg" alt="Uygulama Arayüzü - 3" width="49%">
+    <img src="images/arayuz4.jpg" alt="Uygulama Arayüzü - 4" width="49%"><br/>
+    <img src="images/arayuz5.jpg" alt="Uygulama Arayüzü - 5" width="80%">
     <br/>
-    <i>Streamlit arayüzünden ML/NN eğitim ve GA optimizasyon akışı</i>
-  
+    <i>Streamlit arayüzünde veri analizi, ML/NN eğitimi ve GA optimizasyon ekranları</i>
 </p>
+
+Not: Görsellerinizin doğru görünmesi için ekran görüntülerinizi `images/` klasörüne koyun ve README içinde `images/<dosya_adı>.png` şeklinde referans verin.
 
 ---
 
@@ -44,10 +49,6 @@ Windows PowerShell için adımlar:
 git clone https://github.com/Yukseltt/fc26_squad_optimizer.git
 cd fc26_squad_optimizer
 
-# (Opsiyonel) Sanal ortam oluşturup etkinleştirin
-python -m venv venv
-venv\Scripts\activate
-
 # Bağımlılıkları kurun
 pip install -r requirements.txt
 ```
@@ -59,14 +60,6 @@ Uygulamayı başlatın (GUI):
 ```powershell
 streamlit run app.py
 ```
-
-Komut satırı alternatifi:
-
-```powershell
-python main.py
-```
-
-
 
 ---
 
@@ -80,108 +73,21 @@ python main.py
 
 ---
 
-## ML: Oyuncu Değeri Tahmini (Detaylı)
+## ML: Oyuncu Değeri Tahmini
 
-Bu bölüm `src/ml_models.py` içindeki `PlayerValuePredictor` sınıfına dayanır ve arayüzdeki “Makine Öğrenmesi” sayfası ile entegredir.
-
-- Girdi özellikleri (DataLoader.get_features_for_ml):
-    - overall, potential, age, height_cm, weight_kg
-    - pace, shooting, passing, dribbling, defending, physic
-    - weak_foot, skill_moves, international_reputation
-- Hedef: value_eur (oyuncu piyasa değeri)
-- Ön işleme: Eksikler sütun ortalaması ile doldurulur; StandardScaler ile X ölçeklenir
-- Veri bölme: train_test_split(test_size UI’dan ayarlanır; varsayılan 0.2)
-- Değerlendirme metrikleri: R², MAE, RMSE (test setinde gösterilir)
-
-Desteklenen modeller ve hiperparametreler (UI’dan dinamik):
-
-- RandomForestRegressor
-    - n_estimators, max_depth, random_state=42, n_jobs=-1
-- GradientBoostingRegressor
-    - n_estimators, max_depth, learning_rate, random_state=42
-- XGBRegressor
-    - n_estimators, max_depth, learning_rate, random_state=42, n_jobs=-1
-
-Eğitimden sonra en iyi model R² skoruna göre seçilir; ağaç tabanlı modeller için feature_importances_ görsellenebilir. “Değeri Düşük Oyuncular” sekmesi, tahmin/gerçek oranına göre undervalued oyuncuları listeler (UI’daki eşik ile kontrol edilir).
-
-Model Kaydet/Yükle:
-
-- Kaydet: `models/trained_models/ml_model_YYYYMMDD_HHMMSS.pkl`
-- İçerik: { model, scaler, model_name, feature_importance }
-- Uygulama açılırken “en son kaydedilen” model otomatik yüklenmeye çalışılır.
+Arayüzdeki “Makine Öğrenmesi” sayfası üzerinden `PlayerValuePredictor` ile oyuncu değeri (value_eur) tahmin edilir. DataLoader’dan gelen çekirdek özellikler (overall, potential, pace vb.) StandardScaler ile ölçeklenir; eğitim/test ayrımı yapılır ve R²/MAE/RMSE ile raporlanır. Desteklenen modeller: Random Forest, Gradient Boosting, XGBoost (hiperparametreler UI’dan ayarlanır). En iyi model R² ile seçilir; ağaç tabanlılarda feature importance gösterilir. “Değeri Düşük Oyuncular” sekmesi, tahmin/gerçek oranıyla undervalued oyuncuları listeler. Modeller `models/trained_models/ml_model_*.pkl` olarak kaydedilir ve otomatik yükleme desteklenir.
 
 ---
 
-## NN: Takım Sinerjisi Tahmini (Detaylı)
+## NN: Takım Sinerjisi Tahmini
 
-Bu bölüm `src/team_synergy_nn.py` içindeki `TeamSynergyPredictor` sınıfına dayanır. 11 oyuncudan takım düzeyinde 0–100 arası sinerji skoru üretir.
-
-Özellik Mühendisliği (11 oyuncudan 40+ öznitelik; yaklaşık 46 özellik):
-
-- Temel takım istatistikleri (6):
-    - overall ort/Std/medyan/min/max, 80+ oyuncu sayısı
-- Yaş dengesi (4):
-    - yaş ort/Std, 24–28 prime sayısı, <23 genç sayısı
-- Kimya (6):
-    - milliyet çeşitliliği, en çok tekrar eden milliyet ve dağılımı
-    - lig çeşitliliği, en çok tekrar eden lig ve dağılımı
-- Oyun stili (12):
-    - pace, shooting, passing, dribbling, defending, physic için ortalama ve Std
-- Pozisyon uyumu (11):
-    - formasyondaki her mevki için oyuncunun ilgili pozisyon reytingi (örn. ST→st)
-- Hücum–savunma dengesi (4):
-    - hücum ve savunma ortalamaları, farkı, hücum oranı
-- Değer dağılımı (3):
-    - takım değer ort/Std, max/ortalama oranı
-
-Sentetik Eğitim Verisi Üretimi:
-
-- Formasyonlardan (433, 442, 352) 1000+ rastgele takım örneklenir (UI’dan sayı ayarlanır)
-- Uygun mevkilere uygun oyuncular seçilir (player_positions eşleşmesi ve kısıtlar)
-- Gerçek etiket olmayan “true synergy” bir sezgisel fonksiyonla (overall dağılımı, yaş dengesi, milliyet/lig kümelenmesi vb.) 0–100 arası skalanır ve küçük gürültü eklenir
-
-Model Mimarisi ve Eğitim:
-
-- Skaler: StandardScaler
-- Model: scikit-learn MLPRegressor
-- Varsayılan hiperparametreler (UI’dan değiştirilebilir):
-    - hidden_layer_sizes=(128, 64, 32)
-    - activation='relu', solver='adam'
-    - max_iter=500, learning_rate='adaptive'
-    - early_stopping=True, n_iter_no_change=20
-- Train/test ayrımı: 0.8/0.2
-- Metrikler: R² ve MSE (train/test)
-
-Tahmin ve Açıklama:
-
-- predict_synergy(squad, positions) → [0,100]
-- explain_synergy(...) → skor + özet metrikler (avg_overall, avg_age, çeşitlilikler) ve yıldız derecelendirmesi
-
-Model Kaydet/Yükle:
-
-- Kaydet: `models/trained_models/synergy_nn_YYYYMMDD_HHMMSS.pkl`
-- İçerik: { model, scaler, trained }
+`TeamSynergyPredictor`, 11 oyunculuk takım için 0–100 arası sinerji skoru üretir. Özellikler; overall/yaş dağılımı, kimya (milliyet/lig kümeleri), oyun stili ort./Std, pozisyon uyumu, hücum-savunma dengesi ve değer dağılımından türetilir. Sentetik veri (433/442/352) ile MLPRegressor (hidden_layer_sizes varsayılan: 128-64-32) eğitilir; R²/MSE raporlanır. `predict_synergy` skor verir, `explain_synergy` kısa özet çıkarır. Modeller `models/trained_models/synergy_nn_*.pkl` olarak kaydedilir.
 
 ---
 
-## Genetik Algoritma (Detaylı)
+## Genetik Algoritma
 
-Kaynak: `src/genetic_algorithm.py` – `GeneticSquadOptimizer`.
-
-- Formasyonlar: 4-3-3, 4-4-2, 3-5-2, 4-2-3-1 (positions haritaları hazır)
-- Bütçe ayrımı: %70 ilk 11, %30 yedekler; oyuncu başı aşırı pahalı/ucuzlara karşı korumalar
-- Uygunluk: player_positions ile asıl mevkii kontrolü; ilgili pozisyon reytingine (örn. cm/cb/st) alt eşik
-- Fitness:
-    - Σ[(pozisyon skoru×0.3 + overall×0.7)]
-    - + kimya bonusu (milliyet/lig/klüp eşleşmelerine dayalı proxy) ×0.5
-    - + (opsiyonel) NN sinerji ×2.0
-    - + (opsiyonel) ML tahmini değer → overall’a log-ölçekli bonus
-- Evrimsel adımlar: elitizm, turnuva seçimi, tek-nokta çaprazlama, mutasyon (pozisyon bazlı oyuncu değişimi)
-- UI parametreleri: population_size, generations; ML/NN kullanım onayları
-- Çıktı: en iyi takım, yedekler (opsiyonel), fitness, kimya, ort. overall, pozisyon sırası ve jenerasyon bazlı ilerleme
-- Dışa aktarma: `results/best_squads/squad_{formation}_YYYYMMDD_HHMMSS.csv`
-
-Not: `src/ml_optimizer.py` içinde GA’sız hızlı/greedy bir alternatif (MLSquadOptimizer) de bulunmaktadır.
+`GeneticSquadOptimizer`, bütçe ve formasyona göre en yüksek fitness’lı kadroyu bulur. Fitness; pozisyon uyumu+overall, kimya (proxy), opsiyonel NN sinerji ve opsiyonel ML değer katkısından oluşur. Popülasyon, jenerasyon, elitizm ve mutasyon parametreleri UI’dan ayarlanır. Sonuç CSV’ye aktarılır (`results/best_squads/…`). Ayrıca `src/ml_optimizer.py` GA’sız hızlı bir alternatif sunar.
 
 ---
 
@@ -194,6 +100,12 @@ fc26_squad_optimizer/
 ├── README.md
 ├── requirements.txt
 ├── texts.py
+├── images/
+│   ├── arayuz.jpg
+│   ├── arayuz2.jpg
+│   ├── arayuz3.jpg
+│   ├── arayuz4.jpg
+│   └── arayuz5.jpg
 ├── data/
 │   └── players.csv
 ├── models/
@@ -216,24 +128,16 @@ fc26_squad_optimizer/
 
 ---
 
-## Sık Karşılaşılan Sorular / Sorun Giderme
+## Model Eğitimleri ve Olası Hatalar
 
-- Streamlit komutu bulunamadı → `pip install streamlit`; ardından `streamlit run app.py`
-- ModuleNotFoundError → `pip install -r requirements.txt`
-- `data/players.csv` bulunamadı → dosyayı belirtilen yola ekleyin (ad tam olarak players.csv olmalı)
+- ML ve NN modellerini arayüz üzerinden çeşitli parametreleri değiştirerek eğitebilrisiniz.
+- Eğittiğiniz modelleri kayıt edebilirsiniz.
 - Port 8501 dolu → `streamlit run app.py --server.port 8502`
 - Optimizasyon yavaş → nesil/popülasyon değerlerini düşürün; ML/NN seçimini kapatın
 
 ---
 
-## Katkı ve Lisans
-
-- Katkılar PR ile memnuniyetle kabul edilir. Issue/pull request açmaktan çekinmeyin.
-- Lisans: MIT
-
 Yazar: @Yukseltt
 
-—
 
-Made with ❤️ using Python & Streamlit
 
