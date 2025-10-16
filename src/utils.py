@@ -376,3 +376,4 @@ def calculate_squad_summary(squad: List[pd.Series]) -> Dict:
         'avg_defending': np.mean([float(p.get('defending', 70)) for p in squad 
                                  if pd.notna(p.get('defending'))])
     }
+
